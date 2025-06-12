@@ -374,137 +374,170 @@
     .config-group {
       margin-bottom: 10px;
     }
-    
-  <div id="chat-widget-input-container">
-    <div id="chat-widget-textarea-wrapper">
-      <textarea id="chat-widget-textarea" placeholder="Escribe un mensaje..." rows="1"></textarea>
-    </div>
-    <div id="chat-widget-actions">
-      <div id="chat-widget-image" class="widget-action-button">🖼️</div>
-      <div id="chat-widget-mic" class="widget-action-button">🎤</div>
-      <div id="chat-widget-send" class="widget-action-button">➤</div>
+  </style>
+</head>
+<body>
+  <div id="chat-widget-container">
+    <div id="chat-widget-window">
+      <div id="chat-widget-header">
+        <h3 id="chat-widget-title">Chat de Melamina</h3>
+        <div id="chat-widget-controls">
+          <div id="chat-widget-config">⚙️</div>
+          <div id="chat-widget-close">✗</div>
+        </div>
+      </div>
+      <div id="chat-widget-messages">
+        <!-- Mensaje de bienvenida -->
+        <div class="chat-message status-message">¡Hola! Envía una foto o audio con tus medidas de melamina para cotizar.</div>
+      </div>
+      <div id="chat-widget-input-container">
+        <div id="chat-widget-textarea-wrapper">
+          <textarea id="chat-widget-textarea" placeholder="Escribe un mensaje..." rows="1"></textarea>
+        </div>
+        <div id="chat-widget-actions">
+          <div id="chat-widget-image" class="widget-action-button">🖼️</div>
+          <div id="chat-widget-mic" class="widget-action-button">🎤</div>
+          <div id="chat-widget-send" class="widget-action-button">➤</div>
+        </div>
+      </div>
     </div>
   </div>
 
-  // Variables para manejo de imágenes
-  let imageInput = null;
-
-  // Inicializar input de imagen
-  function initImageInput() {
-    imageInput = document.createElement('input');
-    imageInput.type = 'file';
-    imageInput.accept = 'image/*';
-    imageInput.style.display = 'none';
-    document.body.appendChild(imageInput);
-
-    imageInput.addEventListener('change', (e) => {
-      const file = e.target.files[0];
-      if (file) {
-        sendImageFile(file);
-      }
-    });
-  }
-
-  // Enviar archivo de imagen con manejo de CORS
-  async function sendImageFile(file) {
-    if (!file) return;
-    
-    // Mostrar mensaje del usuario
-    addUserMessage('Imagen: ' + file.name);
-    
-    // Mostrar indicador de escritura
-    showTypingIndicator();
-    
-    try {
-      // Crear un iframe oculto para evitar problemas de CORS
-      const iframeId = 'image-iframe-' + Math.random().toString(36).substring(2, 15);
-      const iframe = document.createElement('iframe');
-      iframe.id = iframeId;
-      iframe.style.display = 'none';
-      document.body.appendChild(iframe);
-      
-      // Crear un formulario dentro del iframe
-      const form = document.createElement('form');
-      form.method = 'POST';
-      form.action = widgetConfig.apiUrl;
-      form.enctype = 'multipart/form-data';
-      
-      // Añadir campos al formulario
-      const userIdInput = document.createElement('input');
-      userIdInput.type = 'hidden';
-      userIdInput.name = 'user_id';
-      userIdInput.value = userId;
-      form.appendChild(userIdInput);
-      
-      const channelInput = document.createElement('input');
-      channelInput.type = 'hidden';
-      channelInput.name = 'channel';
-      channelInput.value = 'web';
-      form.appendChild(channelInput);
-      
-      const typeInput = document.createElement('input');
-      typeInput.type = 'hidden';
-      typeInput.name = 'type';
-      typeInput.value = 'image';
-      form.appendChild(typeInput);
-      
-      // Crear un input de archivo y asignarle el archivo
-      const fileInput = document.createElement('input');
-      fileInput.type = 'file';
-      fileInput.name = 'image';
-      
-      // Crear un nuevo archivo con el mismo contenido
-      const newFile = new File([file], file.name, {
-        type: file.type,
-        lastModified: file.lastModified
-      });
-      
-      // Crear un DataTransfer para asignar el archivo al input
-      const dataTransfer = new DataTransfer();
-      dataTransfer.items.add(newFile);
-      fileInput.files = dataTransfer.files;
-      
-      form.appendChild(fileInput);
-      
-      // Añadir el formulario al iframe y enviarlo
-      iframe.contentDocument.body.appendChild(form);
-      form.submit();
-      
-      // Esperar un tiempo para que se procese la solicitud
-      setTimeout(() => {
-        // Eliminar el iframe
-        document.body.removeChild(iframe);
-        
-        // Asumir que la solicitud fue exitosa
-        isWaitingForResponse = true;
-        
-        // Conectar a SSE si no estamos conectados
-        if (!eventSource || connectionStatus !== 'online') {
-          connectSSE(userId, 'web');
-        }
-      }, 2000);
-    } catch (error) {
-      console.error('Error sending image:', error);
-      hideTypingIndicator();
-      
-      // Mensaje de error detallado
-      let errorDetails = 'Hubo un problema al enviar la imagen. Es posible que haya problemas de CORS. Asegúrate de que el backend esté configurado correctamente.';
-      
-      addErrorMessage('Error al enviar la imagen', errorDetails);
-    }
-  }
-
-  // Inicializar widget
-  function initWidget() {
-    // ... existing code ...
-
-    // Event listeners para imágenes
-    elements.image.addEventListener('click', () => {
-      imageInput.click();
-    });
+  <script>
+    // Variables para manejo de imágenes
+    let imageInput = null;
 
     // Inicializar input de imagen
-    initImageInput();
+    function initImageInput() {
+      imageInput = document.createElement('input');
+      imageInput.type = 'file';
+      imageInput.accept = 'image/*';
+      imageInput.style.display = 'none';
+      document.body.appendChild(imageInput);
 
-    // ... rest of existing code ...
-  } 
+      imageInput.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (file) {
+          sendImageFile(file);
+        }
+      });
+    }
+
+    // Enviar archivo de imagen con manejo de CORS
+    async function sendImageFile(file) {
+      if (!file) return;
+      
+      // Mostrar mensaje del usuario
+      addUserMessage('Imagen: ' + file.name);
+      
+      // Mostrar indicador de escritura
+      showTypingIndicator();
+      
+      try {
+        // Crear un iframe oculto para evitar problemas de CORS
+        const iframeId = 'image-iframe-' + Math.random().toString(36).substring(2, 15);
+        const iframe = document.createElement('iframe');
+        iframe.id = iframeId;
+        iframe.style.display = 'none';
+        document.body.appendChild(iframe);
+        
+        // Crear un formulario dentro del iframe
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = widgetConfig.apiUrl;
+        form.enctype = 'multipart/form-data';
+        
+        // Añadir campos al formulario
+        const userIdInput = document.createElement('input');
+        userIdInput.type = 'hidden';
+        userIdInput.name = 'user_id';
+        userIdInput.value = userId;
+        form.appendChild(userIdInput);
+        
+        const channelInput = document.createElement('input');
+        channelInput.type = 'hidden';
+        channelInput.name = 'channel';
+        channelInput.value = 'web';
+        form.appendChild(channelInput);
+        
+        const typeInput = document.createElement('input');
+        typeInput.type = 'hidden';
+        typeInput.name = 'type';
+        typeInput.value = 'image';
+        form.appendChild(typeInput);
+        
+        // Crear un input de archivo y asignarle el archivo
+        const fileInput = document.createElement('input');
+        fileInput.type = 'file';
+        fileInput.name = 'image';
+        
+        // Crear un nuevo archivo con el mismo contenido
+        const newFile = new File([file], file.name, {
+          type: file.type,
+          lastModified: file.lastModified
+        });
+        
+        // Crear un DataTransfer para asignar el archivo al input
+        const dataTransfer = new DataTransfer();
+        dataTransfer.items.add(newFile);
+        fileInput.files = dataTransfer.files;
+        
+        form.appendChild(fileInput);
+        
+        // Añadir el formulario al iframe y enviarlo
+        iframe.contentDocument.body.appendChild(form);
+        form.submit();
+        
+        // Esperar un tiempo para que se procese la solicitud
+        setTimeout(() => {
+          // Eliminar el iframe
+          document.body.removeChild(iframe);
+          
+          // Asumir que la solicitud fue exitosa
+          isWaitingForResponse = true;
+          
+          // Conectar a SSE si no estamos conectados
+          if (!eventSource || connectionStatus !== 'online') {
+            connectSSE(userId, 'web');
+          }
+        }, 2000);
+      } catch (error) {
+        console.error('Error sending image:', error);
+        hideTypingIndicator();
+        
+        // Mensaje de error detallado
+        let errorDetails = 'Hubo un problema al enviar la imagen. Es posible que haya problemas de CORS. Asegúrate de que el backend esté configurado correctamente.';
+        
+        addErrorMessage('Error al enviar la imagen', errorDetails);
+      }
+    }
+
+    // Inicializar widget
+    function initWidget() {
+      // ... existing code ...
+
+      // Event listeners para imágenes
+      elements.image.addEventListener('click', () => {
+        imageInput.click();
+      });
+
+      // Inicializar input de imagen
+      initImageInput();
+
+      // ... rest of existing code ...
+    }
+
+    // Configuración del widget (EDITAR ESTA SECCIÓN)
+    const widgetConfig = {
+      apiUrl: 'https://agent-workspace.onrender.com/webhook',
+      sseUrl: 'https://agent-workspace.onrender.com/webhook/sse',
+      chatTitle: 'Chat de Melamina',
+      welcomeMessage: '¡Hola! Envía una foto o audio con tus medidas de melamina para cotizar.',
+      botAvatar: 'https://via.placeholder.com/40/27ae60/FFFFFF?text=IA',
+      userAvatar: 'https://via.placeholder.com/40/E89D3C/FFFFFF?text=Tú',
+      showTimestamp: true,
+      showTypingIndicator: true,
+    };
+  </script>
+</body>
+</html> 

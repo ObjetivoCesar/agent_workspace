@@ -374,137 +374,548 @@
     .config-group {
       margin-bottom: 10px;
     }
-    
-  <div id="chat-widget-input-container">
-    <div id="chat-widget-textarea-wrapper">
-      <textarea id="chat-widget-textarea" placeholder="Escribe un mensaje..." rows="1"></textarea>
+  </style>
+</head>
+<body>
+  <div id="chat-widget-container">
+    <div id="chat-widget-window">
+      <div id="chat-widget-header">
+        <h3 id="chat-widget-title">Chat de Melamina</h3>
+        <div id="chat-widget-controls">
+          <div id="chat-widget-config">⚙️</div>
+          <div id="chat-widget-close">✗</div>
+        </div>
+      </div>
+      <div id="chat-widget-messages">
+        <!-- Mensaje de bienvenida -->
+        <div class="chat-message status-message">¡Hola! Envía una foto o audio con tus medidas de melamina para cotizar.</div>
+      </div>
+      <div id="chat-widget-input-container">
+        <div id="chat-widget-textarea-wrapper">
+          <textarea id="chat-widget-textarea" placeholder="Escribe un mensaje..." rows="1"></textarea>
+        </div>
+        <div id="chat-widget-actions">
+          <div id="chat-widget-image" class="widget-action-button">🖼️</div>
+          <div id="chat-widget-mic" class="widget-action-button">🎤</div>
+          <div id="chat-widget-send" class="widget-action-button">➤</div>
+        </div>
+      </div>
     </div>
-    <div id="chat-widget-actions">
-      <div id="chat-widget-image" class="widget-action-button">🖼️</div>
-      <div id="chat-widget-mic" class="widget-action-button">🎤</div>
-      <div id="chat-widget-send" class="widget-action-button">➤</div>
-    </div>
+    <div id="chat-widget-button">💬</div>
   </div>
 
-  // Variables para manejo de imágenes
-  let imageInput = null;
+  <!-- Contenedor para grabación de audio -->
+  <div id="chat-widget-audio-container">
+    <div id="chat-widget-audio-timer">00:00</div>
+    <div id="chat-widget-audio-controls">
+      <div id="chat-widget-audio-record" class="audio-control-button">●</div>
+      <div id="chat-widget-audio-stop" class="audio-control-button">■</div>
+      <div id="chat-widget-audio-send" class="audio-control-button">➤</div>
+      <div id="chat-widget-audio-cancel" class="audio-control-button">✗</div>
+    </div>
+    <audio id="chat-widget-audio-preview" controls></audio>
+  </div>
 
-  // Inicializar input de imagen
-  function initImageInput() {
-    imageInput = document.createElement('input');
-    imageInput.type = 'file';
-    imageInput.accept = 'image/*';
-    imageInput.style.display = 'none';
-    document.body.appendChild(imageInput);
+  <!-- Panel de configuración (oculto por defecto) -->
+  <div id="chat-widget-config-panel">
+    <h4>Configuración</h4>
+    <div class="config-group">
+      <label for="user-id-input">ID de Usuario:</label>
+      <input type="text" id="user-id-input" value="test-user" />
+    </div>
+    <div class="config-group">
+      <label for="channel-input">Canal:</label>
+      <input type="text" id="channel-input" value="web" />
+    </div>
+    <div class="config-group">
+      <label for="api-url-input">URL API:</label>
+      <input type="text" id="api-url-input" value="https://agent-workspace.onrender.com/webhook" />
+    </div>
+    <div class="config-group">
+      <label for="sse-url-input">URL SSE:</label>
+      <input type="text" id="sse-url-input" value="https://agent-workspace.onrender.com/webhook/sse" />
+    </div>
+    <button id="save-config-button">Guardar Configuración</button>
+  </div>
 
-    imageInput.addEventListener('change', (e) => {
-      const file = e.target.files[0];
-      if (file) {
-        sendImageFile(file);
+  <script>
+    // Configuración del widget
+    const widgetConfig = {
+      apiUrl: 'https://agent-workspace.onrender.com/webhook',
+      sseUrl: 'https://agent-workspace.onrender.com/webhook/sse',
+      chatTitle: 'Chat de Melamina',
+      welcomeMessage: '¡Hola! Envía una foto o audio con tus medidas de melamina para cotizar.',
+      botAvatar: 'https://via.placeholder.com/40/27ae60/FFFFFF?text=IA',
+      userAvatar: 'https://via.placeholder.com/40/E89D3C/FFFFFF?text=Tú',
+      showTimestamp: true,
+      showTypingIndicator: true,
+    };
+
+    // Variables globales del widget
+    let userId = localStorage.getItem('chatWidgetUserId') || 'user_' + Math.random().toString(36).substring(2, 15);
+    let eventSource = null;
+    let connectionStatus = 'offline';
+    let isWaitingForResponse = false;
+    let mediaRecorder;
+    let audioChunks = [];
+    let audioTimerInterval;
+    let audioElapsedTime = 0;
+    let imageInput = null; // Declarar aquí para que sea global en el script
+
+    // Elementos del DOM (Se obtienen después de que el DOM esté cargado)
+    let elements = {};
+
+    // Funciones de utilidad
+    function addMessage(text, sender, isMarkdown = false, type = 'text') {
+      const messageElement = document.createElement('div');
+      messageElement.classList.add('chat-message');
+      if (sender === 'user') {
+        messageElement.classList.add('user-message');
+      } else if (sender === 'bot') {
+        messageElement.classList.add('bot-message');
+      } else if (sender === 'status') {
+        messageElement.classList.add('status-message');
+      } else if (sender === 'error') {
+        messageElement.classList.add('error-message');
       }
-    });
-  }
 
-  // Enviar archivo de imagen con manejo de CORS
-  async function sendImageFile(file) {
-    if (!file) return;
-    
-    // Mostrar mensaje del usuario
-    addUserMessage('Imagen: ' + file.name);
-    
-    // Mostrar indicador de escritura
-    showTypingIndicator();
-    
-    try {
-      // Crear un iframe oculto para evitar problemas de CORS
-      const iframeId = 'image-iframe-' + Math.random().toString(36).substring(2, 15);
-      const iframe = document.createElement('iframe');
-      iframe.id = iframeId;
-      iframe.style.display = 'none';
-      document.body.appendChild(iframe);
-      
-      // Crear un formulario dentro del iframe
-      const form = document.createElement('form');
-      form.method = 'POST';
-      form.action = widgetConfig.apiUrl;
-      form.enctype = 'multipart/form-data';
-      
-      // Añadir campos al formulario
-      const userIdInput = document.createElement('input');
-      userIdInput.type = 'hidden';
-      userIdInput.name = 'user_id';
-      userIdInput.value = userId;
-      form.appendChild(userIdInput);
-      
-      const channelInput = document.createElement('input');
-      channelInput.type = 'hidden';
-      channelInput.name = 'channel';
-      channelInput.value = 'web';
-      form.appendChild(channelInput);
-      
-      const typeInput = document.createElement('input');
-      typeInput.type = 'hidden';
-      typeInput.name = 'type';
-      typeInput.value = 'image';
-      form.appendChild(typeInput);
-      
-      // Crear un input de archivo y asignarle el archivo
-      const fileInput = document.createElement('input');
-      fileInput.type = 'file';
-      fileInput.name = 'image';
-      
-      // Crear un nuevo archivo con el mismo contenido
-      const newFile = new File([file], file.name, {
-        type: file.type,
-        lastModified: file.lastModified
-      });
-      
-      // Crear un DataTransfer para asignar el archivo al input
-      const dataTransfer = new DataTransfer();
-      dataTransfer.items.add(newFile);
-      fileInput.files = dataTransfer.files;
-      
-      form.appendChild(fileInput);
-      
-      // Añadir el formulario al iframe y enviarlo
-      iframe.contentDocument.body.appendChild(form);
-      form.submit();
-      
-      // Esperar un tiempo para que se procese la solicitud
-      setTimeout(() => {
-        // Eliminar el iframe
-        document.body.removeChild(iframe);
-        
-        // Asumir que la solicitud fue exitosa
+      if (isMarkdown && type === 'text') {
+        messageElement.innerHTML = parseMarkdown(text);
+      } else {
+        messageElement.textContent = text;
+      }
+
+      elements.messages.appendChild(messageElement);
+      elements.messages.scrollTop = elements.messages.scrollHeight;
+    }
+
+    function addUserMessage(text) {
+      addMessage(text, 'user');
+    }
+
+    function addBotMessage(text) {
+      addMessage(text, 'bot', true); // Bot messages are parsed as markdown
+    }
+
+    function addStatusMessage(text) {
+      addMessage(text, 'status');
+    }
+
+    function addErrorMessage(title, details) {
+      addMessage(`${title}: ${details}`, 'error');
+    }
+
+    function showTypingIndicator() {
+      if (widgetConfig.showTypingIndicator && !elements.typingIndicator) {
+        elements.typingIndicator = document.createElement('div');
+        elements.typingIndicator.classList.add('typing-indicator');
+        elements.typingIndicator.innerHTML = '<span></span><span></span><span></span>';
+        elements.messages.appendChild(elements.typingIndicator);
+        elements.messages.scrollTop = elements.messages.scrollHeight;
+      }
+    }
+
+    function hideTypingIndicator() {
+      if (elements.typingIndicator) {
+        elements.typingIndicator.remove();
+        elements.typingIndicator = null;
+      }
+    }
+
+    function parseMarkdown(text) {
+      // Simple markdown parsing for bold, italic, code, pre, ul, ol, blockquote
+      let html = text
+        .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>') // Bold
+        .replace(/__(.*?)__/g, '<strong>$1</strong>')
+        .replace(/\*(.*?)\*/g, '<em>$1</em>') // Italic
+        .replace(/_(.*?)_/g, '<em>$1</em>');
+
+      // Code blocks (simple, multi-line)
+      html = html.replace(/```([\s\S]*?)```/g, '<pre><code>$1</code></pre>');
+      // Inline code
+      html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+
+      // Lists (basic)
+      html = html.replace(/^\s*\*\s+(.*)/gm, '<li>$1</li>');
+      if (html.includes('<li>')) {
+        html = `<ul>${html}</ul>`;
+      }
+      html = html.replace(/^\s*\d+\.\s+(.*)/gm, '<li>$1</li>');
+      if (html.includes('<li>') && !html.includes('<ul>')) {
+        html = `<ol>${html}</ol>`;
+      }
+
+      // Blockquotes
+      html = html.replace(/^>\s*(.*)/gm, '<blockquote>$1</blockquote>');
+
+      return html;
+    }
+
+    // Conectar a SSE
+    function connectSSE(id, channel) {
+      if (eventSource) {
+        eventSource.close();
+      }
+      const sseFullUrl = `${widgetConfig.sseUrl}/${id}?channel=${channel}`;
+      addStatusMessage(`Conectando a actualizaciones en tiempo real...`);
+      eventSource = new EventSource(sseFullUrl);
+
+      eventSource.onopen = () => {
+        console.log('SSE connection opened.');
+        connectionStatus = 'online';
+        addStatusMessage('Conexión en tiempo real establecida.');
+      };
+
+      eventSource.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        console.log('SSE message:', data);
+        hideTypingIndicator(); // Ocultar indicador si llega un mensaje
+
+        // Manejar diferentes tipos de mensajes SSE
+        if (data.type === 'update' && data.payload && data.payload.status) {
+          addStatusMessage(`Estado del pedido: ${data.payload.status}`);
+        } else if (data.type === 'order_complete' && data.payload) {
+          addBotMessage(`Pedido completado: ${JSON.stringify(data.payload, null, 2)}`);
+          isWaitingForResponse = false;
+        } else if (data.type === 'error' && data.payload && data.payload.message) {
+          addErrorMessage('Error del Backend', data.payload.message);
+          isWaitingForResponse = false;
+        } else if (data.type === 'response_message' && data.payload && data.payload.message) {
+          addBotMessage(data.payload.message);
+          isWaitingForResponse = false;
+        } else {
+          addBotMessage(`Recibido: ${JSON.stringify(data, null, 2)}`);
+        }
+      };
+
+      eventSource.onerror = (error) => {
+        console.error('SSE error:', error);
+        eventSource.close();
+        connectionStatus = 'offline';
+        addErrorMessage('Error de Conexión', 'Se perdió la conexión en tiempo real. Reintentando...');
+        isWaitingForResponse = false;
+        setTimeout(() => connectSSE(id, channel), 5000); // Reintentar conexión
+      };
+    }
+
+    // Enviar mensaje de texto
+    async function sendMessage(text) {
+      if (!text.trim()) return;
+
+      addUserMessage(text);
+      elements.textarea.value = '';
+      showTypingIndicator();
+
+      try {
+        const response = await fetch(widgetConfig.apiUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            user_id: userId,
+            channel: 'web',
+            type: 'text',
+            message: text,
+          }),
+        });
+
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const data = await response.json();
+        console.log('Text message sent, response:', data);
         isWaitingForResponse = true;
-        
+
         // Conectar a SSE si no estamos conectados
         if (!eventSource || connectionStatus !== 'online') {
           connectSSE(userId, 'web');
         }
-      }, 2000);
-    } catch (error) {
-      console.error('Error sending image:', error);
-      hideTypingIndicator();
-      
-      // Mensaje de error detallado
-      let errorDetails = 'Hubo un problema al enviar la imagen. Es posible que haya problemas de CORS. Asegúrate de que el backend esté configurado correctamente.';
-      
-      addErrorMessage('Error al enviar la imagen', errorDetails);
+
+      } catch (error) {
+        console.error('Error sending message:', error);
+        hideTypingIndicator();
+        addErrorMessage('Error al enviar mensaje', 'No se pudo enviar el mensaje. Verifica la URL del backend y tu conexión.');
+      }
     }
-  }
-
-  // Inicializar widget
-  function initWidget() {
-    // ... existing code ...
-
-    // Event listeners para imágenes
-    elements.image.addEventListener('click', () => {
-      imageInput.click();
-    });
 
     // Inicializar input de imagen
-    initImageInput();
+    function initImageInput() {
+      imageInput = document.createElement('input');
+      imageInput.type = 'file';
+      imageInput.accept = 'image/*';
+      imageInput.style.display = 'none';
+      document.body.appendChild(imageInput);
 
-    // ... rest of existing code ...
-  } 
+      imageInput.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (file) {
+          sendImageFile(file);
+        }
+      });
+    }
+
+    // Enviar archivo de imagen con manejo de CORS
+    async function sendImageFile(file) {
+      if (!file) return;
+
+      addUserMessage('Imagen: ' + file.name);
+      showTypingIndicator();
+
+      try {
+        const formData = new FormData();
+        formData.append('user_id', userId);
+        formData.append('channel', 'web');
+        formData.append('type', 'image');
+        formData.append('image', file);
+
+        const response = await fetch(widgetConfig.apiUrl, {
+          method: 'POST',
+          body: formData,
+          // fetch automáticamente establece Content-Type: multipart/form-data con boundary
+        });
+
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const data = await response.json();
+        console.log('Image sent, response:', data);
+        isWaitingForResponse = true;
+
+        if (!eventSource || connectionStatus !== 'online') {
+          connectSSE(userId, 'web');
+        }
+
+      } catch (error) {
+        console.error('Error sending image:', error);
+        hideTypingIndicator();
+        addErrorMessage('Error al enviar la imagen', 'Hubo un problema al enviar la imagen. Asegúrate de que el backend esté configurado correctamente y soporta CORS.');
+      }
+    }
+
+    // Funciones de grabación de audio
+    async function startRecording() {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        mediaRecorder = new MediaRecorder(stream);
+        audioChunks = [];
+        audioElapsedTime = 0;
+
+        elements.audioRecord.classList.add('recording-pulse');
+        elements.audioTimer.textContent = '00:00';
+        elements.audioPreview.style.display = 'none';
+
+        audioTimerInterval = setInterval(() => {
+          audioElapsedTime++;
+          const minutes = Math.floor(audioElapsedTime / 60).toString().padStart(2, '0');
+          const seconds = (audioElapsedTime % 60).toString().padStart(2, '0');
+          elements.audioTimer.textContent = `${minutes}:${seconds}`;
+        }, 1000);
+
+        mediaRecorder.ondataavailable = (event) => {
+          audioChunks.push(event.data);
+        };
+
+        mediaRecorder.onstop = () => {
+          clearInterval(audioTimerInterval);
+          const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+          const audioUrl = URL.createObjectURL(audioBlob);
+          elements.audioPreview.src = audioUrl;
+          elements.audioPreview.style.display = 'block'; // Mostrar previsualización
+        };
+
+        mediaRecorder.start();
+        console.log('Recording started');
+      } catch (error) {
+        console.error('Error accessing microphone:', error);
+        addErrorMessage('Error de Micrófono', 'No se pudo acceder al micrófono. Asegúrate de dar permisos.');
+      }
+    }
+
+    function stopRecording() {
+      if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+        mediaRecorder.stop();
+        console.log('Recording stopped');
+        elements.audioRecord.classList.remove('recording-pulse');
+      }
+    }
+
+    async function sendAudioFile() {
+      if (audioChunks.length === 0) {
+        addErrorMessage('Error de Audio', 'No hay audio para enviar.');
+        return;
+      }
+
+      const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+      addUserMessage('Audio: ' + audioBlob.size + ' bytes');
+      showTypingIndicator();
+
+      elements.audioContainer.style.display = 'none'; // Ocultar controles de audio
+
+      try {
+        const formData = new FormData();
+        formData.append('user_id', userId);
+        formData.append('channel', 'web');
+        formData.append('type', 'audio');
+        formData.append('audio', audioBlob, 'recording.webm');
+
+        const response = await fetch(widgetConfig.apiUrl, {
+          method: 'POST',
+          body: formData,
+        });
+
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const data = await response.json();
+        console.log('Audio sent, response:', data);
+        isWaitingForResponse = true;
+
+        if (!eventSource || connectionStatus !== 'online') {
+          connectSSE(userId, 'web');
+        }
+
+        // Limpiar después de enviar
+        audioChunks = [];
+        elements.audioPreview.src = '';
+
+      } catch (error) {
+        console.error('Error sending audio:', error);
+        hideTypingIndicator();
+        addErrorMessage('Error al enviar audio', 'Hubo un problema al enviar el audio. Asegúrate de que el backend esté configurado correctamente y soporta CORS.');
+      }
+    }
+
+    function cancelRecording() {
+      stopRecording();
+      audioChunks = [];
+      elements.audioPreview.src = '';
+      elements.audioContainer.style.display = 'none';
+      console.log('Recording cancelled');
+    }
+
+    // Inicializar widget
+    function initWidget() {
+      // Asignar elementos del DOM después de que el HTML esté cargado
+      elements = {
+        container: document.getElementById('chat-widget-container'),
+        window: document.getElementById('chat-widget-window'),
+        header: document.getElementById('chat-widget-header'),
+        title: document.getElementById('chat-widget-title'),
+        messages: document.getElementById('chat-widget-messages'),
+        textarea: document.getElementById('chat-widget-textarea'),
+        send: document.getElementById('chat-widget-send'),
+        button: document.getElementById('chat-widget-button'),
+        close: document.getElementById('chat-widget-close'),
+        image: document.getElementById('chat-widget-image'),
+        mic: document.getElementById('chat-widget-mic'),
+        audioContainer: document.getElementById('chat-widget-audio-container'),
+        audioRecord: document.getElementById('chat-widget-audio-record'),
+        audioStop: document.getElementById('chat-widget-audio-stop'),
+        audioSend: document.getElementById('chat-widget-audio-send'),
+        audioCancel: document.getElementById('chat-widget-audio-cancel'),
+        audioTimer: document.getElementById('chat-widget-audio-timer'),
+        audioPreview: document.getElementById('chat-widget-audio-preview'),
+        config: document.getElementById('chat-widget-config'),
+        configPanel: document.getElementById('chat-widget-config-panel'),
+        userIdInput: document.getElementById('user-id-input'),
+        channelInput: document.getElementById('channel-input'),
+        apiUrlInput: document.getElementById('api-url-input'),
+        sseUrlInput: document.getElementById('sse-url-input'),
+        saveConfigButton: document.getElementById('save-config-button'),
+        typingIndicator: null,
+      };
+
+      // Event listeners para abrir/cerrar ventana
+      elements.button.addEventListener('click', () => {
+        elements.window.style.display = elements.window.style.display === 'flex' ? 'none' : 'flex';
+        if (elements.window.style.display === 'flex') {
+          elements.textarea.focus();
+        }
+      });
+
+      elements.close.addEventListener('click', () => {
+        elements.window.style.display = 'none';
+      });
+
+      // Event listener para enviar mensaje de texto
+      elements.send.addEventListener('click', () => {
+        sendMessage(elements.textarea.value);
+      });
+
+      elements.textarea.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault();
+          sendMessage(elements.textarea.value);
+        }
+      });
+
+      elements.textarea.addEventListener('input', () => {
+        elements.textarea.style.height = 'auto';
+        elements.textarea.style.height = elements.textarea.scrollHeight + 'px';
+      });
+
+      // Event listeners para imágenes
+      elements.image.addEventListener('click', () => {
+        imageInput.click();
+      });
+
+      // Inicializar input de imagen
+      initImageInput();
+
+      // Event listeners para audio
+      elements.mic.addEventListener('click', () => {
+        elements.audioContainer.style.display = elements.audioContainer.style.display === 'flex' ? 'none' : 'flex';
+        if (elements.audioContainer.style.display === 'flex') {
+          elements.audioRecord.classList.remove('recording-pulse');
+          elements.audioTimer.textContent = '00:00';
+          elements.audioPreview.style.display = 'none';
+        }
+      });
+
+      elements.audioRecord.addEventListener('click', startRecording);
+      elements.audioStop.addEventListener('click', stopRecording);
+      elements.audioSend.addEventListener('click', sendAudioFile);
+      elements.audioCancel.addEventListener('click', cancelRecording);
+
+      // Event listeners para configuración
+      elements.config.addEventListener('click', () => {
+        const isVisible = elements.configPanel.style.display === 'block';
+        elements.configPanel.style.display = isVisible ? 'none' : 'block';
+        if (!isVisible) {
+          elements.userIdInput.value = userId;
+          elements.apiUrlInput.value = widgetConfig.apiUrl;
+          elements.sseUrlInput.value = widgetConfig.sseUrl;
+          elements.channelInput.value = 'web'; // Asumiendo que el canal web es fijo
+        }
+      });
+
+      elements.saveConfigButton.addEventListener('click', () => {
+        userId = elements.userIdInput.value;
+        widgetConfig.apiUrl = elements.apiUrlInput.value;
+        widgetConfig.sseUrl = elements.sseUrlInput.value;
+        localStorage.setItem('chatWidgetUserId', userId);
+        addStatusMessage('Configuración guardada. Reconectando SSE si es necesario.');
+        if (eventSource) {
+          eventSource.close(); // Cerrar conexión SSE existente
+          connectSSE(userId, 'web'); // Reconectar con nueva configuración
+        }
+        elements.configPanel.style.display = 'none';
+      });
+
+      // Conectar a SSE al inicio
+      connectSSE(userId, 'web');
+
+      // Ajustar la altura del textarea al cargar la página
+      elements.textarea.style.height = 'auto';
+      elements.textarea.style.height = elements.textarea.scrollHeight + 'px';
+    }
+
+    // Llama a initWidget cuando el DOM esté completamente cargado
+    document.addEventListener('DOMContentLoaded', initWidget);
+  </script>
+</body>
+</html> 

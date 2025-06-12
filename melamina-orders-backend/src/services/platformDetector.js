@@ -172,21 +172,18 @@ class PlatformDetector {
 
   processWebChat(payload) {
     try {
-      const { user_id, type, payload: messagePayload, text } = payload
+      const { user_id, type } = payload;
 
       if (!user_id || !type) {
-        return null
+        return null;
       }
 
-      let content = ""
+      let content = "";
 
       if (type === "text") {
-        // Prioridad: payload.text > payload.payload.text
-        content = text || messagePayload?.text || ""
-      } else if (type === "audio") {
-        content = messagePayload?.audio_url || ""
-      } else if (type === "image") {
-        content = messagePayload?.image_url || ""
+        content = payload.message || "";
+      } else if (type === "audio" || type === "image") {
+        content = payload.filePath || "";
       }
 
       return {
@@ -194,11 +191,11 @@ class PlatformDetector {
         user_id,
         type,
         content,
-        is_echo: false, // Web chat no tiene echo
-      }
+        is_echo: false,
+      };
     } catch (error) {
-      console.error("❌ Error processing Web Chat:", error)
-      return null
+      console.error("❌ Error processing Web Chat:", error);
+      return null;
     }
   }
 }

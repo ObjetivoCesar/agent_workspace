@@ -36,7 +36,7 @@ app.set('trust proxy', 1);
 
 // Configuración CORS específica
 const corsOptions = {
-  origin: '*', // Permitir todos los orígenes temporalmente para pruebas
+  origin: ['https://codepen.io', 'https://agent-workspace.onrender.com'], // Permitir orígenes específicos para CORS con credenciales
   methods: ['GET', 'POST', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
   credentials: true,

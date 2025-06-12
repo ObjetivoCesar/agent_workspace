@@ -91,9 +91,9 @@ router.post("/", limiter, upload.fields([
       }
       
       // Validar campos específicos según el tipo
-      if (payload.type === 'text' && !payload.text) {
-        console.log(`❌ Payload web inválido: Falta campo 'text'`);
-        return res.status(400).json({ error: 'Campo text requerido para mensajes de texto' });
+      if (payload.type === 'text' && !payload.message) {
+        console.log(`❌ Payload web inválido: Falta campo 'message'`);
+        return res.status(400).json({ error: 'Campo message requerido para mensajes de texto' });
       }
       
       if (payload.type === 'image' && !payload.filePath) {
