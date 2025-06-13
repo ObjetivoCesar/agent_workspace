@@ -113,6 +113,28 @@ router.post("/", limiter, upload.fields([
         console.log(`❌ Payload web inválido: Falta campo 'filePath'`);
         return res.status(400).json({ error: 'Campo filePath requerido para audio' });
       }
+
+      // Validar campos específicos según el tipo
+      if (payload.type === 'text' && !payload.message) {
+        console.log(`❌ Payload web inválido: Falta campo 'message' para mensajes de texto`);
+        return res.status(400).json({ error: 'Campo message requerido para mensajes de texto' });
+      }
+      
+      // Validar si el archivo de imagen está presente para el tipo 'image'
+      if (payload.type === 'image') {
+        if (!req.files || !req.files.image || !req.files.image[0]) {
+          console.log(`❌ Payload web inválido: Falta archivo de imagen para el tipo 'image'`);
+          return res.status(400).json({ error: 'Archivo de imagen requerido para el tipo imagen' });
+        }
+      }
+      
+      // Validar si el archivo de audio está presente para el tipo 'audio'
+      if (payload.type === 'audio') {
+        if (!req.files || !req.files.audio || !req.files.audio[0]) {
+          console.log(`❌ Payload web inválido: Falta archivo de audio para el tipo 'audio'`);
+          return res.status(400).json({ error: 'Archivo de audio requerido para el tipo audio' });
+        }
+      }
     }
     // Procesar el mensaje según la plataforma
     const processedMessage = await messageProcessor.processIncomingMessage(payload)

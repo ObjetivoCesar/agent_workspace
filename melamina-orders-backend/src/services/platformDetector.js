@@ -17,7 +17,7 @@ class PlatformDetector {
       }
 
       // Web Chat (custom format)
-      if (payload.channel === "web" && payload.user_id) {
+      if (payload.channel === "web") {
         return this.processWebChat(payload)
       }
 
@@ -172,23 +172,37 @@ class PlatformDetector {
 
   processWebChat(payload) {
     try {
-      const { user_id, type } = payload;
+      const { userId, channel, message, filePath } = payload;
 
-      if (!user_id || !type) {
+      if (!userId || !channel) {
+        console.warn("Missing userId or channel in web chat payload:", payload);
         return null;
       }
 
+      let type = "unknown";
       let content = "";
 
-      if (type === "text") {
-        content = payload.message || "";
-      } else if (type === "audio" || type === "image") {
-        content = payload.filePath || "";
+      if (message) {
+        type = "text";
+        content = message;
+      } else if (filePath) {
+        // Determinar si es audio o imagen basándose en el payload original (si se envía)
+        if (payload.type === "audio") {
+          type = "audio";
+        } else if (payload.type === "image") {
+          type = "image";
+        }
+        content = filePath;
+      }
+
+      if (type === "unknown") {
+        console.warn("Unknown message type for web chat payload:", payload);
+        return null;
       }
 
       return {
-        channel: "web",
-        user_id,
+        channel,
+        user_id: userId,
         type,
         content,
         is_echo: false,
