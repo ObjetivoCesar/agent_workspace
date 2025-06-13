@@ -613,10 +613,9 @@
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            user_id: userId,
-            channel: 'web',
-            type: 'text',
             message: text,
+            userId: userId,
+            channel: 'web'
           }),
         });
 

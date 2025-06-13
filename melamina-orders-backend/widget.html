@@ -441,17 +441,14 @@
       });
     }
 
-    // Enviar mensaje de texto
+    // Función para enviar mensajes
     async function sendMessage(message) {
-      if (!message) return;
-      
-      // Mostrar mensaje del usuario
-      addUserMessage(message);
-      
-      // Mostrar indicador de escritura
-      showTypingIndicator();
+      if (!message.trim()) return;
       
       try {
+        showTypingIndicator();
+        addUserMessage(message);
+        
         const response = await fetch(widgetConfig.apiUrl, {
           method: 'POST',
           headers: {
@@ -459,13 +456,12 @@
             'Accept': 'application/json',
             'Origin': window.location.origin
           },
-          mode: 'cors',
           credentials: 'include',
+          mode: 'cors',
           body: JSON.stringify({
-            user_id: userId,
-            channel: 'web',
-            type: 'text',
-            message: message
+            message: message,
+            userId: userId,
+            channel: 'web'
           })
         });
 
@@ -473,8 +469,8 @@
           throw new Error(`HTTP error! status: ${response.status}`);
         }
 
-        // Asumir que la solicitud fue exitosa
-        isWaitingForResponse = true;
+        const data = await response.json();
+        console.log('Message sent successfully:', data);
         
         // Conectar a SSE si no estamos conectados
         if (!eventSource || connectionStatus !== 'online') {
@@ -483,7 +479,7 @@
       } catch (error) {
         console.error('Error sending message:', error);
         hideTypingIndicator();
-        addErrorMessage('Error al enviar mensaje', 'No se pudo enviar el mensaje. Verifica la URL del backend y tu conexión.');
+        addErrorMessage('Error al enviar mensaje', 'No se pudo enviar el mensaje. Por favor, intenta de nuevo.');
       }
     }
 
