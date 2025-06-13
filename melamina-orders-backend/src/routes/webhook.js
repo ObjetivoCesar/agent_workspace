@@ -85,14 +85,22 @@ router.post("/", limiter, upload.fields([
     console.log("📨 Webhook received:", JSON.stringify(payload, null, 2))
     // Validar payload según el canal
     if (payload.channel === 'web') {
-      if (!payload.user_id || !payload.channel || !payload.type) {
-        console.log(`❌ Payload web inválido:`, payload);
-        return res.status(400).json({ error: 'Payload inválido' });
+      if (!payload.userId || !payload.channel) {
+        console.log(`❌ Payload web inválido: Falta userId o channel`, payload);
+        return res.status(400).json({ error: 'Payload inválido: Falta userId o channel' });
       }
-      
-      // Validar campos específicos según el tipo
+
+      if (!payload.type) {
+          if (payload.message) {
+              payload.type = 'text'; // Es un mensaje de texto
+          } else {
+              console.log(`❌ Payload web inválido: Tipo de mensaje no definido y sin campo 'message'`, payload);
+              return res.status(400).json({ error: 'Payload inválido: Tipo de mensaje no definido o falta campo message' });
+          }
+      }
+
       if (payload.type === 'text' && !payload.message) {
-        console.log(`❌ Payload web inválido: Falta campo 'message'`);
+        console.log(`❌ Payload web inválido: Falta campo 'message' para mensajes de texto`);
         return res.status(400).json({ error: 'Campo message requerido para mensajes de texto' });
       }
       
