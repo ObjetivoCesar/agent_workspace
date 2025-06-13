@@ -404,8 +404,26 @@
   </div>
 
   <script>
-    // Variables para manejo de imágenes
+    // Variables globales
     let imageInput = null;
+    let eventSource = null;
+    let userId = null;
+    let connectionStatus = 'offline';
+    let isWaitingForResponse = false;
+
+    // Elementos del DOM
+    const elements = {
+      container: document.getElementById('chat-widget-container'),
+      window: document.getElementById('chat-widget-window'),
+      button: document.getElementById('chat-widget-button'),
+      close: document.getElementById('chat-widget-close'),
+      config: document.getElementById('chat-widget-config'),
+      messages: document.getElementById('chat-widget-messages'),
+      textarea: document.getElementById('chat-widget-textarea'),
+      send: document.getElementById('chat-widget-send'),
+      image: document.getElementById('chat-widget-image'),
+      mic: document.getElementById('chat-widget-mic')
+    };
 
     // Inicializar input de imagen
     function initImageInput() {
@@ -423,6 +441,52 @@
       });
     }
 
+    // Enviar mensaje de texto
+    async function sendMessage(message) {
+      if (!message) return;
+      
+      // Mostrar mensaje del usuario
+      addUserMessage(message);
+      
+      // Mostrar indicador de escritura
+      showTypingIndicator();
+      
+      try {
+        const response = await fetch(widgetConfig.apiUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'Origin': window.location.origin
+          },
+          mode: 'cors',
+          credentials: 'include',
+          body: JSON.stringify({
+            user_id: userId,
+            channel: 'web',
+            type: 'text',
+            message: message
+          })
+        });
+
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        // Asumir que la solicitud fue exitosa
+        isWaitingForResponse = true;
+        
+        // Conectar a SSE si no estamos conectados
+        if (!eventSource || connectionStatus !== 'online') {
+          connectSSE(userId, 'web');
+        }
+      } catch (error) {
+        console.error('Error sending message:', error);
+        hideTypingIndicator();
+        addErrorMessage('Error al enviar mensaje', 'No se pudo enviar el mensaje. Verifica la URL del backend y tu conexión.');
+      }
+    }
+
     // Enviar archivo de imagen con manejo de CORS
     async function sendImageFile(file) {
       if (!file) return;
@@ -434,73 +498,34 @@
       showTypingIndicator();
       
       try {
-        // Crear un iframe oculto para evitar problemas de CORS
-        const iframeId = 'image-iframe-' + Math.random().toString(36).substring(2, 15);
-        const iframe = document.createElement('iframe');
-        iframe.id = iframeId;
-        iframe.style.display = 'none';
-        document.body.appendChild(iframe);
-        
-        // Crear un formulario dentro del iframe
-        const form = document.createElement('form');
-        form.method = 'POST';
-        form.action = widgetConfig.apiUrl;
-        form.enctype = 'multipart/form-data';
-        
-        // Añadir campos al formulario
-        const userIdInput = document.createElement('input');
-        userIdInput.type = 'hidden';
-        userIdInput.name = 'user_id';
-        userIdInput.value = userId;
-        form.appendChild(userIdInput);
-        
-        const channelInput = document.createElement('input');
-        channelInput.type = 'hidden';
-        channelInput.name = 'channel';
-        channelInput.value = 'web';
-        form.appendChild(channelInput);
-        
-        const typeInput = document.createElement('input');
-        typeInput.type = 'hidden';
-        typeInput.name = 'type';
-        typeInput.value = 'image';
-        form.appendChild(typeInput);
-        
-        // Crear un input de archivo y asignarle el archivo
-        const fileInput = document.createElement('input');
-        fileInput.type = 'file';
-        fileInput.name = 'image';
-        
-        // Crear un nuevo archivo con el mismo contenido
-        const newFile = new File([file], file.name, {
-          type: file.type,
-          lastModified: file.lastModified
+        const formData = new FormData();
+        formData.append('user_id', userId);
+        formData.append('channel', 'web');
+        formData.append('type', 'image');
+        formData.append('image', file);
+
+        const response = await fetch(widgetConfig.apiUrl, {
+          method: 'POST',
+          headers: {
+            'Accept': 'application/json',
+            'Origin': window.location.origin
+          },
+          mode: 'cors',
+          credentials: 'include',
+          body: formData
         });
+
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        // Asumir que la solicitud fue exitosa
+        isWaitingForResponse = true;
         
-        // Crear un DataTransfer para asignar el archivo al input
-        const dataTransfer = new DataTransfer();
-        dataTransfer.items.add(newFile);
-        fileInput.files = dataTransfer.files;
-        
-        form.appendChild(fileInput);
-        
-        // Añadir el formulario al iframe y enviarlo
-        iframe.contentDocument.body.appendChild(form);
-        form.submit();
-        
-        // Esperar un tiempo para que se procese la solicitud
-        setTimeout(() => {
-          // Eliminar el iframe
-          document.body.removeChild(iframe);
-          
-          // Asumir que la solicitud fue exitosa
-          isWaitingForResponse = true;
-          
-          // Conectar a SSE si no estamos conectados
-          if (!eventSource || connectionStatus !== 'online') {
-            connectSSE(userId, 'web');
-          }
-        }, 2000);
+        // Conectar a SSE si no estamos conectados
+        if (!eventSource || connectionStatus !== 'online') {
+          connectSSE(userId, 'web');
+        }
       } catch (error) {
         console.error('Error sending image:', error);
         hideTypingIndicator();
@@ -512,9 +537,82 @@
       }
     }
 
+    // Funciones de utilidad para mensajes
+    function addUserMessage(message) {
+      const messageDiv = document.createElement('div');
+      messageDiv.className = 'chat-message user-message';
+      messageDiv.textContent = message;
+      elements.messages.appendChild(messageDiv);
+      elements.messages.scrollTop = elements.messages.scrollHeight;
+    }
+
+    function addBotMessage(message) {
+      const messageDiv = document.createElement('div');
+      messageDiv.className = 'chat-message bot-message';
+      messageDiv.textContent = message;
+      elements.messages.appendChild(messageDiv);
+      elements.messages.scrollTop = elements.messages.scrollHeight;
+    }
+
+    function addErrorMessage(title, details) {
+      const messageDiv = document.createElement('div');
+      messageDiv.className = 'chat-message error-message';
+      messageDiv.innerHTML = `<strong>${title}</strong><br>${details}`;
+      elements.messages.appendChild(messageDiv);
+      elements.messages.scrollTop = elements.messages.scrollHeight;
+    }
+
+    function showTypingIndicator() {
+      const indicator = document.createElement('div');
+      indicator.className = 'typing-indicator';
+      indicator.innerHTML = '<span></span><span></span><span></span>';
+      elements.messages.appendChild(indicator);
+      elements.messages.scrollTop = elements.messages.scrollHeight;
+    }
+
+    function hideTypingIndicator() {
+      const indicator = elements.messages.querySelector('.typing-indicator');
+      if (indicator) {
+        indicator.remove();
+      }
+    }
+
     // Inicializar widget
     function initWidget() {
-      // ... existing code ...
+      // Generar ID de usuario si no existe
+      if (!userId) {
+        userId = 'user_' + Math.random().toString(36).substring(2, 15);
+      }
+
+      // Event listeners
+      elements.button.addEventListener('click', () => {
+        elements.window.style.display = 'flex';
+        elements.button.style.display = 'none';
+      });
+
+      elements.close.addEventListener('click', () => {
+        elements.window.style.display = 'none';
+        elements.button.style.display = 'flex';
+      });
+
+      elements.send.addEventListener('click', () => {
+        const message = elements.textarea.value.trim();
+        if (message) {
+          sendMessage(message);
+          elements.textarea.value = '';
+        }
+      });
+
+      elements.textarea.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault();
+          const message = elements.textarea.value.trim();
+          if (message) {
+            sendMessage(message);
+            elements.textarea.value = '';
+          }
+        }
+      });
 
       // Event listeners para imágenes
       elements.image.addEventListener('click', () => {
@@ -523,11 +621,9 @@
 
       // Inicializar input de imagen
       initImageInput();
-
-      // ... rest of existing code ...
     }
 
-    // Configuración del widget (EDITAR ESTA SECCIÓN)
+    // Configuración del widget
     const widgetConfig = {
       apiUrl: 'https://agent-workspace.onrender.com/webhook',
       sseUrl: 'https://agent-workspace.onrender.com/webhook/sse',
@@ -539,78 +635,84 @@
       showTypingIndicator: true,
     };
 
-    // Conectar a Server-Sent Events (SSE)
-    let eventSource = null;
-    let userId = null;
+    // Inicializar el widget cuando el DOM esté listo
+    document.addEventListener('DOMContentLoaded', initWidget);
 
+    // Conectar a Server-Sent Events (SSE)
     function connectSSE(id, channel) {
       if (eventSource) {
         eventSource.close();
       }
       userId = id;
       const sseFullUrl = `${widgetConfig.sseUrl}?userId=${userId}&channel=${channel}`;
-      eventSource = new EventSource(sseFullUrl);
+      
+      try {
+        eventSource = new EventSource(sseFullUrl, {
+          withCredentials: true
+        });
 
-      eventSource.onopen = function() {
-        console.log('SSE connection opened.');
-        connectionStatus = 'online';
-      };
+        eventSource.onopen = function() {
+          console.log('SSE connection opened.');
+          connectionStatus = 'online';
+        };
 
-      eventSource.onmessage = function(event) {
-        console.log('SSE message received:', event.data);
-        hideTypingIndicator();
-        try {
-          const data = JSON.parse(event.data);
-          let displayMessage = data.message;
+        eventSource.onmessage = function(event) {
+          console.log('SSE message received:', event.data);
+          hideTypingIndicator();
+          try {
+            const data = JSON.parse(event.data);
+            let displayMessage = data.message;
 
-          if (data.type === 'order_update') {
-            try {
-              const orderData = JSON.parse(data.message);
-              if (orderData.tipo === 'pedidoprocesado' && orderData.pedido) {
-                const pedido = orderData.pedido;
-                displayMessage = `📦 Pedido Procesado: ID ${pedido.id}\n`;
-                displayMessage += `Total de Piezas: ${pedido.medidas.resumen.totalpiezas}\n`;
-                displayMessage += `Área Total: ${pedido.medidas.resumen.areatotalm2} m²\n`;
-                displayMessage += `Estado: ${pedido.estado}\n`;
-                if (pedido.estado === 'requiererevision' && pedido.medidas.resumen.observacionesgenerales) {
-                  displayMessage += `Observaciones: ${pedido.medidas.resumen.observacionesgenerales}`;
+            if (data.type === 'order_update') {
+              try {
+                const orderData = JSON.parse(data.message);
+                if (orderData.tipo === 'pedidoprocesado' && orderData.pedido) {
+                  const pedido = orderData.pedido;
+                  displayMessage = `📦 Pedido Procesado: ID ${pedido.id}\n`;
+                  displayMessage += `Total de Piezas: ${pedido.medidas.resumen.totalpiezas}\n`;
+                  displayMessage += `Área Total: ${pedido.medidas.resumen.areatotalm2} m²\n`;
+                  displayMessage += `Estado: ${pedido.estado}\n`;
+                  if (pedido.estado === 'requiererevision' && pedido.medidas.resumen.observacionesgenerales) {
+                    displayMessage += `Observaciones: ${pedido.medidas.resumen.observacionesgenerales}`;
+                  }
+                } else {
+                  displayMessage = `Recibido: ${JSON.stringify(orderData, null, 2)}`;
                 }
-              } else {
-                displayMessage = `Recibido: ${JSON.stringify(orderData, null, 2)}`;
-              }
-            } catch (e) {
-              // Si falla el parseo interno, usar el mensaje original de data.message
-              console.warn("Could not parse inner message as JSON, displaying as is.", data.message);
-              displayMessage = data.message;
-            }
-          } else if (data.type === 'message') {
-            try {
-              const innerMessage = JSON.parse(data.message);
-              if (innerMessage.message) {
-                displayMessage = innerMessage.message;
-              } else {
+              } catch (e) {
+                console.warn("Could not parse inner message as JSON, displaying as is.", data.message);
                 displayMessage = data.message;
               }
-            } catch (e) {
-              // Si falla el parseo interno, usar el mensaje original de data.message
-              console.warn("Could not parse inner message as JSON, displaying as is.", data.message);
-              displayMessage = data.message;
+            } else if (data.type === 'message') {
+              try {
+                const innerMessage = JSON.parse(data.message);
+                if (innerMessage.message) {
+                  displayMessage = innerMessage.message;
+                } else {
+                  displayMessage = data.message;
+                }
+              } catch (e) {
+                console.warn("Could not parse inner message as JSON, displaying as is.", data.message);
+                displayMessage = data.message;
+              }
             }
+            
+            addBotMessage(displayMessage);
+          } catch (error) {
+            console.error('Error parsing SSE message:', error);
+            addBotMessage('Recibido: ' + event.data);
           }
-          
-          addBotMessage(displayMessage);
-        } catch (error) {
-          console.error('Error parsing SSE message:', error);
-          addBotMessage('Recibido: ' + event.data);
-        }
-      };
+        };
 
-      eventSource.onerror = function() {
-        console.error('SSE connection error.');
-        connectionStatus = 'offline';
-        eventSource.close();
-        setTimeout(() => connectSSE(userId, channel), 5000); // Reintentar conexión después de 5 segundos
-      };
+        eventSource.onerror = function(error) {
+          console.error('SSE connection error:', error);
+          connectionStatus = 'offline';
+          eventSource.close();
+          setTimeout(() => connectSSE(userId, channel), 5000); // Reintentar conexión después de 5 segundos
+        };
+      } catch (error) {
+        console.error('Error creating EventSource:', error);
+        addErrorMessage('Error de conexión', 'No se pudo establecer la conexión con el servidor. Por favor, intenta de nuevo más tarde.');
+      }
     }
   </script>
 </body>

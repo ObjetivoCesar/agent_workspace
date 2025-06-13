@@ -36,12 +36,31 @@ app.set('trust proxy', 1);
 
 // Configuración CORS específica
 const corsOptions = {
-  origin: ['https://codepen.io', 'https://cdpn.io', 'https://agent-workspace.onrender.com'], // Permitir orígenes específicos para CORS con credenciales, incluyendo cdpn.io
+  origin: function(origin, callback) {
+    const allowedOrigins = [
+      'https://codepen.io',
+      'https://cdpn.io',
+      'https://agent-workspace.onrender.com',
+      'http://localhost:3000',
+      'http://localhost:8080',
+      'http://127.0.0.1:5500',
+      'http://127.0.0.1:8080'
+    ];
+    // Permitir solicitudes sin origen (como las de Postman)
+    if (!origin || allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      console.log('Origin not allowed:', origin);
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   methods: ['GET', 'POST', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
+  exposedHeaders: ['Content-Type', 'Authorization'],
   credentials: true,
   preflightContinue: false,
-  optionsSuccessStatus: 204
+  optionsSuccessStatus: 204,
+  maxAge: 86400 // 24 horas
 }
 
 // Aplicar CORS antes de otros middlewares
